@@ -1,0 +1,16 @@
+services:
+  signal-cli-rest-api:
+    image: bbernhard/signal-cli-rest-api
+    container_name: signal-cli-rest-api
+    # network_mode: host
+    environment:
+      - MODE=json-rpc
+      #- MODE=native
+      #- MODE=normal
+      - SIGNAL_CLI_UID=1001
+      - SIGNAL_CLI_GID=1002
+    volumes:
+      - ./data:/home/.local/share/signal-cli
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
