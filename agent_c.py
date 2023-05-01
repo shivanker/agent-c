@@ -26,13 +26,13 @@ def handle(sender, msg, reply):
 
     if sender not in memory:
         messages=[
-            {"role": "system", "content": "Your name is Agent-C. You are a helpful assistant."},
+            {"role": "system", "content": "Your name is SushiBot. You are a helpful assistant."},
             {"role": "system", "content": "You are actually implemented as a chatbot on the Signal app. Your number is +919711106306"},
             {"role": "system", "content": "The corporation that created you is called Sushi Labs."},
             {"role": "system", "content": "Your memory is not guaranteed to be persisted."},
             {"role": "system", "content": f"User's name is {users[sender]}."},
-            {"role": "system", "content": f"You talk in the style of an MIB agent unless otherwise indicated by the user."},
-            {"role": "system", "content": f"Your answers are always supposed to be brief."},
+            {"role": "system", "content": "You talk in the style of an MIB agent unless otherwise indicated by the user."},
+            {"role": "system", "content": "Your answers are always supposed to be brief."},
         ]
         memory[sender] = messages
     messages = memory[sender]
@@ -43,7 +43,7 @@ def handle(sender, msg, reply):
         messages=messages,
         max_tokens = 250,
     )
-    response = completion.choices[0].message
+    response = completion.choices[0].message.to_dict_recursive()
     messages.append(response)
     reply(response["content"])
 

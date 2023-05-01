@@ -81,7 +81,9 @@ def on_message(ws, message):
         return
     
     sender = message["envelope"]["sourceNumber"]
+    senderName = message["envelope"]["sourceName"]
     if sender == None:
+        log.info(f"Received first message from a new sender: [{senderName}].")
         send(message["envelope"]["sourceUuid"],
              "Hi! Since this was your first message, Signal does not allow me to do much. Please prompt me again.")
         return
