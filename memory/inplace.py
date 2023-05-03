@@ -5,8 +5,8 @@ from memory.memory import Memory
 import time
 from itertools import accumulate
 
-log.basicConfig(
-    level=log.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 class InPlaceMemory(Memory):
     def __init__(self, limiter_fn, sizer_fn):
@@ -27,7 +27,9 @@ class InPlaceMemory(Memory):
         n = len(msgs)
         ts, msgs = zip(*reversed(msgs))
         cum_sizes = accumulate(map(self.sizer, msgs))
-        filtered = filter(lambda x: self.limiter(*x), zip(range(0,n), ts, cum_sizes, msgs))
+        filtered = filter(
+            lambda x: self.limiter(*x), zip(range(0, n), ts, cum_sizes, msgs)
+        )
         self.mem[user] = list(map(lambda x: (x[1], x[3]), filtered))
         self.mem[user].reverse()
 

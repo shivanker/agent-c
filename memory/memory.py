@@ -3,8 +3,8 @@
 import logging as log
 from abc import ABC, abstractmethod
 
-log.basicConfig(
-    level=log.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 class Memory(ABC):
     def __init__(self, limiter_fn, sizer_fn):
@@ -31,4 +31,3 @@ class Memory(ABC):
     @abstractmethod
     def pop(self, user):
         pass
-

@@ -14,8 +14,7 @@ import mimetypes
 import re
 import os
 
-log.basicConfig(
-    level=log.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 bot_number = os.environ.get("SIGNAL_BOT")
@@ -44,7 +43,8 @@ def send(recipient_phone_number, message):
     response = requests.post(url, json=payload)
     if response.status_code != 201:
         log.error(
-            f"Failed to send message. Status code: [{response.status_code}], Error: [{response.text}]")
+            f"Failed to send message. Status code: [{response.status_code}], Error: [{response.text}]"
+        )
         return False
     return True
 
@@ -62,8 +62,7 @@ def on_error(ws, error):
 
 
 def on_close(ws, status_code, msg):
-    log.info(
-        f"WebSocket connection closed. status:[{status_code}], msg:[{msg}]")
+    log.info(f"WebSocket connection closed. status:[{status_code}], msg:[{msg}]")
 
 
 def on_open(ws):
@@ -81,13 +80,15 @@ def on_message(ws, message):
             return
         if "dataMessage" not in message["envelope"]:
             return
-        
+
         sender = message["envelope"]["sourceNumber"]
         senderName = message["envelope"]["sourceName"]
         if sender == None:
             log.info(f"Received first message from a new sender: [{senderName}].")
-            send(message["envelope"]["sourceUuid"],
-                "Hi! Since this was your first message, Signal does not allow me to do much. Please prompt me again.")
+            send(
+                message["envelope"]["sourceUuid"],
+                "Hi! Since this was your first message, Signal does not allow me to do much. Please prompt me again.",
+            )
             return
 
         if sender not in allowlist:
@@ -103,8 +104,13 @@ def on_message(ws, message):
 
 def receive_bg():
     websocket_url = f"ws{api_url[4:]}/v1/receive/{bot_number}"
-    ws = websocket.WebSocketApp(websocket_url, on_message=on_message,
-                                on_error=on_error, on_close=on_close, on_open=on_open)
+    ws = websocket.WebSocketApp(
+        websocket_url,
+        on_message=on_message,
+        on_error=on_error,
+        on_close=on_close,
+        on_open=on_open,
+    )
     ws.run_forever(reconnect=5)
 
 
