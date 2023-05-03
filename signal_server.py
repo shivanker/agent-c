@@ -7,6 +7,7 @@ import json
 import logging as log
 import requests
 import threading
+import traceback
 import websocket
 import base64
 import mimetypes
@@ -73,28 +74,31 @@ def on_open(ws):
 
 # Receive messages using WebSocket
 def on_message(ws, message):
-    message = json.loads(message)
-    if "envelope" not in message or "sourceNumber" not in message["envelope"]:
-        log.error(f"Malformed message: {message}")
-        return
-    if "dataMessage" not in message["envelope"]:
-        return
-    
-    sender = message["envelope"]["sourceNumber"]
-    senderName = message["envelope"]["sourceName"]
-    if sender == None:
-        log.info(f"Received first message from a new sender: [{senderName}].")
-        send(message["envelope"]["sourceUuid"],
-             "Hi! Since this was your first message, Signal does not allow me to do much. Please prompt me again.")
-        return
+    try:
+        message = json.loads(message)
+        if "envelope" not in message or "sourceNumber" not in message["envelope"]:
+            log.error(f"Malformed message: {message}")
+            return
+        if "dataMessage" not in message["envelope"]:
+            return
+        
+        sender = message["envelope"]["sourceNumber"]
+        senderName = message["envelope"]["sourceName"]
+        if sender == None:
+            log.info(f"Received first message from a new sender: [{senderName}].")
+            send(message["envelope"]["sourceUuid"],
+                "Hi! Since this was your first message, Signal does not allow me to do much. Please prompt me again.")
+            return
 
-    if sender not in allowlist:
-        log.warning(f"Received message from disallowed number: {sender}")
-        return
+        if sender not in allowlist:
+            log.warning(f"Received message from disallowed number: {sender}")
+            return
 
-    msg_txt = message["envelope"]["dataMessage"]["message"]
-    log.info(f"{sender} says:" + msg_txt)
-    agent_c.handle(sender, msg_txt, lambda x: send(sender, x))
+        msg_txt = message["envelope"]["dataMessage"]["message"]
+        log.info(f"{sender} says:" + msg_txt)
+        agent_c.handle(sender, msg_txt, lambda x: send(sender, x))
+    except Exception as e:
+        traceback.print_exc()
 
 
 def receive_bg():
