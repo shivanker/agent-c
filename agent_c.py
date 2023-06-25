@@ -3,98 +3,84 @@
 import logging as log
 import openai
 import os
-from memory.inplace import InPlaceMemory
-import time
+
+from langchain import (
+    LLMMathChain,
+    GoogleSearchAPIWrapper,
+)
+from langchain.agents import initialize_agent, Tool
+from langchain.agents import AgentType
+from langchain.chat_models import ChatOpenAI
+from langchain.utilities import WikipediaAPIWrapper
+from langchain.chains.conversation.memory import ConversationBufferWindowMemory
+from langchain.prompts import MessagesPlaceholder
+from langchain.schema import get_buffer_string
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-users = {
-    "+447718963471": "Shiv",
-    "+447526184242": "Su",
-    "+447850062789": "Infiloop",
-}
 
-
-def sizer(msg):
-    return len(msg["content"].split())
-
-
-def limiter(idx, ts, cum_size, msg):
-    if msg["role"] == "system":
-        return True
-    if cum_size > 2048:
-        return False
-    if idx > 100:
-        return False
-    if time.time() - ts > 3600 * 24 * 14:
-        return False
-    return True
-
-
-memory = InPlaceMemory(limiter, sizer)
-
-
-def handle(sender, msg, reply):
-    if msg == "/reset":
-        memory.pop(sender)
-        reply("Your session has been reset.")
-        return
-
-    if memory.get(sender) == None:
-        memory.append(
-            sender,
-            {
-                "role": "system",
-                "content": "Your name is SushiBot. You are a helpful assistant.",
-            },
+class AgentC:
+    def __init__(self):
+        self.memory_key = "memory"
+        self.llm = ChatOpenAI(temperature=0.1, model="gpt-3.5-turbo-0613")
+        self.search = GoogleSearchAPIWrapper()  # GoogleSerperAPIWrapper()
+        self.wikipedia = WikipediaAPIWrapper()
+        self.llm_math_chain = LLMMathChain.from_llm(llm=self.llm, verbose=True)
+        self.tools = [
+            Tool(
+                name="Search",
+                func=self.search.run,
+                description="Useful for when you need to answer questions about current events. \
+                    You can use this tool to verify your facts with latest information from the internet. \
+                    You are no longer restricted by your out-of-date training data. \
+                    You should ask targeted questions. \
+                    When you can't figure out what to do with a message, try searching for the keywords using this tool. \
+                    If you can't find what you were looking for in the results of this tool, \
+                    DO NOT invent information. Just say \"I couldn't find it on the internet.\".",
+            ),
+            Tool(
+                name="Calculator",
+                func=self.llm_math_chain.run,
+                description="Useful for when you need to answer questions about math or perform mathematical operations.",
+            ),
+            Tool(
+                name="Wikipedia",
+                func=self.wikipedia.run,
+                description="Useful for when you need to look up facts like from an encyclopedia. \
+                    Remember, this is a high-quality trusted source.",
+            ),
+        ]
+        self.agent_kwargs = {
+            "extra_prompt_messages": [
+                MessagesPlaceholder(variable_name=self.memory_key)
+            ],
+        }
+        self.memory = ConversationBufferWindowMemory(
+            k=20, memory_key=self.memory_key, return_messages=True
         )
-        memory.append(
-            sender,
-            {
-                "role": "system",
-                "content": "You are actually implemented as a chatbot on the Signal app. Your number is +919711106306",
-            },
+        self.agent = initialize_agent(
+            self.tools,
+            self.llm,
+            agent=AgentType.OPENAI_MULTI_FUNCTIONS,
+            memory=self.memory,
+            verbose=True,
+            agent_kwargs=self.agent_kwargs,
         )
-        memory.append(
-            sender,
-            {
-                "role": "system",
-                "content": "The corporation that created you is called Sushi Labs.",
-            },
-        )
-        memory.append(
-            sender,
-            {
-                "role": "system",
-                "content": "Your memory is not guaranteed to be persisted.",
-            },
-        )
-        memory.append(
-            sender, {"role": "system", "content": f"User's name is {users[sender]}."}
-        )
-        memory.append(
-            sender,
-            {
-                "role": "system",
-                "content": "You talk in the style of an MIB agent unless otherwise indicated by the user.",
-            },
-        )
-        memory.append(
-            sender,
-            {
-                "role": "system",
-                "content": "Your answers are always supposed to be brief.",
-            },
-        )
-    memory.append(sender, {"role": "user", "content": msg})
 
-    completion = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=memory.get(sender),
-        max_tokens=250,
-    )
-    response = completion.choices[0].message.to_dict_recursive()
-    memory.append(sender, response)
-    reply(response["content"])
+    def handle(self, sender, msg, reply):
+        reply(self.handle2(msg))
+
+    def handle2(self, msg):
+        if msg == "/reset":
+            self.memory.clear()
+            return "Your session has been reset."
+        elif msg == "/memory":
+            history = get_buffer_string(
+                self.memory.buffer,
+                human_prefix=self.memory.human_prefix,
+                ai_prefix=self.memory.ai_prefix,
+            )
+            return history if history else "Memory is empty."
+        return self.agent.run(msg)

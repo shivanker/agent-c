@@ -16,7 +16,6 @@ import os
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
 bot_number = os.environ.get("SIGNAL_BOT")
 admin = os.environ.get("SIGNAL_ADMIN")
 allowlist = os.environ.get("SIGNAL_ALLOWLIST").split(",")
@@ -97,7 +96,9 @@ def on_message(ws, message):
 
         msg_txt = message["envelope"]["dataMessage"]["message"]
         log.info(f"{sender} says:" + msg_txt)
-        agent_c.handle(sender, msg_txt, lambda x: send(sender, x))
+        if sender not in agents:
+            agents[sender] = agent_c.AgentC()
+        agents[sender].handle(sender, msg_txt, lambda x: send(sender, x))
     except Exception as e:
         traceback.print_exc()
 
