@@ -14,7 +14,10 @@ from langchain.chat_models import ChatOpenAI
 from langchain.utilities import WikipediaAPIWrapper
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain.prompts import MessagesPlaceholder
-from langchain.schema import get_buffer_string
+from langchain.schema import (
+    get_buffer_string,
+    SystemMessage,
+)
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -56,6 +59,9 @@ class AgentC:
             "extra_prompt_messages": [
                 MessagesPlaceholder(variable_name=self.memory_key)
             ],
+            "system_message": SystemMessage(
+                content="Your name is SushiBot. You are a helpful AI assistant."
+            ),
         }
         self.memory = ConversationBufferWindowMemory(
             k=20, memory_key=self.memory_key, return_messages=True
@@ -70,7 +76,16 @@ class AgentC:
         )
 
     def handle(self, sender, msg, reply):
-        reply(self.handle2(msg))
+        try:
+            response = self.handle2(msg)
+        except Exception as e:
+            reply(
+                "Something went wrong.\nHere's the traceback for the brave of heart:\n\n"
+                + str(e)
+            )
+            raise
+        else:
+            reply(response)
 
     def handle2(self, msg):
         if msg == "/reset":
