@@ -1,8 +1,6 @@
 #! /usr/bin/python3
 
 import logging as log
-import openai
-import os
 
 from langchain import (
     LLMMathChain,
@@ -21,13 +19,13 @@ from langchain.schema import (
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+from agents.genimg import genimg_raw, genimg_curated, img_prompt_chain
 
 
 class AgentC:
     def __init__(self):
         self.memory_key = "memory"
-        self.llm = ChatOpenAI(temperature=0.1, model="gpt-3.5-turbo-0613")
+        self.llm = ChatOpenAI(temperature=0.25, model="gpt-3.5-turbo-0613")
         self.search = GoogleSearchAPIWrapper()  # GoogleSerperAPIWrapper()
         self.wikipedia = WikipediaAPIWrapper()
         self.llm_math_chain = LLMMathChain.from_llm(llm=self.llm, verbose=True)
@@ -53,6 +51,15 @@ class AgentC:
                 func=self.wikipedia.run,
                 description="Useful for when you need to look up facts like from an encyclopedia. \
                     Remember, this is a high-quality trusted source.",
+            ),
+            Tool.from_function(
+                name="ImageGenerator",
+                func=genimg_curated,
+                description="Useful when you need to create an image that the user asks you to. \
+                    This tool returns a URL of a human-visible image based on text keywords. You \
+                    can return this URL when the user asks for an image. In the input you need to \
+                    describe a scene in English language, mostly using keywords should be okay \
+                    though.",
             ),
         ]
         self.agent_kwargs = {
@@ -98,4 +105,10 @@ class AgentC:
                 ai_prefix=self.memory.ai_prefix,
             )
             return history if history else "Memory is empty."
+        elif msg.startswith("/genimg"):
+            return genimg_raw(msg[8:])
+        elif msg.startswith("/curated"):
+            return genimg_curated(msg[9:])
+        elif msg.startswith("/imgprompt"):
+            return img_prompt_chain(msg[len("/imgprompt") + 1:])["text"]
         return self.agent.run(msg)
