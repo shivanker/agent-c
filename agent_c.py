@@ -84,15 +84,13 @@ class AgentC:
 
     def handle(self, sender, msg, reply):
         try:
-            response = self.handle2(msg)
+            reply(self.handle2(msg))
         except Exception as e:
             reply(
                 "Something went wrong.\nHere's the traceback for the brave of heart:\n\n"
                 + str(e)
             )
             raise
-        else:
-            reply(response)
 
     def handle2(self, msg):
         if msg == "/reset":

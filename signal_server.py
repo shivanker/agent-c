@@ -25,16 +25,32 @@ agents = {}
 # Initialize the API URL
 api_url = "http://localhost:8080"
 
+url_pattern = re.compile(r"\bhttps?://[\w$+\-*/=\\#?&@~!%\.,:;]+")
+
 
 def timestamp():
     return datetime.now().strftime("%b %d, %H:%M:%S")
 
 
+def send_and_load_urls(recipient_phone_number, message):
+    urls = re.findall(url_pattern, message)
+    attachments = []
+    for url in urls:
+        mime_type = mimetypes.guess_type(url)[0]
+        if mime_type.startswith("image"):
+            log.debug(f"Trying to fetch & encode {mime_type} from URL: {url}")
+            data = base64.b64encode(requests.get(url).content).decode("utf-8")
+            attachments.append(f"data:{mime_type};base64,{data}")
+
+    extra_data = {"base64_attachments": attachments} if attachments else {}
+    return send(recipient_phone_number, message, extra_data)
+
+
 # Send a message
-def send(recipient_phone_number, message):
+def send(recipient_phone_number, message, extra_data={}):
     log.debug(f"Trying to text {recipient_phone_number}: {message}")
     url = f"{api_url}/v2/send"
-    payload = {
+    payload = extra_data | {
         "recipients": [recipient_phone_number],
         "message": message,
         "number": bot_number,
@@ -48,10 +64,41 @@ def send(recipient_phone_number, message):
     return True
 
 
+def start_typing(recipient_phone_number):
+    url = f"{api_url}/v1/typing-indicator/{bot_number}"
+    payload = {"recipient": recipient_phone_number}
+    response = requests.put(url, json=payload)
+    if response.status_code // 100 != 2:
+        log.error(
+            f"Failed to set typing status. Status code: [{response.status_code}], Error: [{response.text}]"
+        )
+        return False
+    return True
+
+
+def stop_typing(recipient_phone_number):
+    url = f"{api_url}/v1/typing-indicator/{bot_number}"
+    payload = {"recipient": recipient_phone_number}
+    response = requests.delete(url, json=payload)
+    if response.status_code // 100 != 2:
+        log.error(
+            f"Failed to delete typing status. Status code: [{response.status_code}], Error: [{response.text}]"
+        )
+        return False
+    return True
+
+
 # Receive messages in normal mode
 def receive_normal():
     url = f"{api_url}/v1/receive/{bot_number}"
     # , headers={"Content-Type": "application/json"})
+    response = requests.get(url)
+    return response
+
+
+# Fetch an attachment by string id
+def fetch_attachment(id):
+    url = f"{api_url}/v1/attachments/{id}"
     response = requests.get(url)
     return response
 
@@ -95,10 +142,22 @@ def on_message(ws, message):
             return
 
         msg_txt = message["envelope"]["dataMessage"]["message"]
+        if "attachments" in message["envelope"]["dataMessage"]:
+            metadata = message["envelope"]["dataMessage"]["attachments"]
+            if "id" in metadata:
+                attachment = fetch_attachment(metadata["id"])
         log.info(f"{sender} says:" + msg_txt)
         if sender not in agents:
             agents[sender] = agent_c.AgentC()
-        agents[sender].handle(sender, msg_txt, lambda x: send(sender, x))
+
+        start_typing(sender)
+        try:
+            agents[sender].handle(
+                sender, msg_txt, lambda x: send_and_load_urls(sender, x)
+            )
+        finally:
+            stop_typing(sender)
+
     except Exception as e:
         traceback.print_exc()
 
