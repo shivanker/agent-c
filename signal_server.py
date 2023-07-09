@@ -34,16 +34,20 @@ def timestamp():
 
 def send_and_load_urls(recipient_phone_number, message):
     urls = re.findall(url_pattern, message)
-    attachments = []
-    for url in urls:
-        mime_type = mimetypes.guess_type(url)[0]
-        if mime_type.startswith("image"):
+    try:
+        attachments = []
+        for url in urls:
+            mime_type = mimetypes.guess_type(url)[0]
             log.debug(f"Trying to fetch & encode {mime_type} from URL: {url}")
             data = base64.b64encode(requests.get(url).content).decode("utf-8")
             attachments.append(f"data:{mime_type};base64,{data}")
 
-    extra_data = {"base64_attachments": attachments} if attachments else {}
-    return send(recipient_phone_number, message, extra_data)
+        extra_data = {"base64_attachments": attachments} if attachments else {}
+        return send(recipient_phone_number, message, extra_data)
+    except Exception as e:
+        traceback.print_exc()
+        log.error(f"Failed to load URL(s) with error: {str(e)}")
+        return send(recipient_phone_number, message)
 
 
 # Send a message
