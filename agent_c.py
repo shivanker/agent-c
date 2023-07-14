@@ -16,6 +16,12 @@ from langchain.schema import (
     get_buffer_string,
     SystemMessage,
 )
+from langchain.agents import load_tools
+from langchain.agents.agent_toolkits import PlayWrightBrowserToolkit
+from langchain.tools.playwright.utils import (
+    create_sync_playwright_browser,
+)
+from langchain.llms import Replicate
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -24,11 +30,16 @@ from agents.genimg import genimg_raw, genimg_curated, img_prompt_chain
 
 class AgentC:
     def __init__(self):
-        self.memory_key = "memory"
         self.llm = ChatOpenAI(temperature=0.25, model="gpt-3.5-turbo-0613")
+        self.conservative_llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-0613")
+        self.gpt4 = ChatOpenAI(temperature=0.25, model="gpt-4-0613")
+        self.vicuna = Replicate(model="replicate/vicuna-13b:6282abe6a492de4145d7bb601023762212f9ddbbe78278bd6771c8b3b2f2a13b")
         self.search = GoogleSearchAPIWrapper()  # GoogleSerperAPIWrapper()
         self.wikipedia = WikipediaAPIWrapper()
         self.llm_math_chain = LLMMathChain.from_llm(llm=self.llm, verbose=True)
+        self.sync_browser = create_sync_playwright_browser()
+        self.browser_toolkit = PlayWrightBrowserToolkit.from_browser(sync_browser=self.sync_browser)
+        tool_names = ["open-meteo-api"]
         self.tools = [
             Tool(
                 name="Search",
@@ -61,8 +72,12 @@ class AgentC:
                     describe a scene in English language, mostly using keywords should be okay \
                     though.",
             ),
-        ]
-        self.agent_kwargs = {
+        ] + load_tools(tool_names, llm = self.conservative_llm) + self.browser_toolkit.get_tools()
+        self.memory_key = "memory"
+        self.memory = ConversationBufferWindowMemory(
+            k=20, memory_key=self.memory_key, return_messages=True
+        )
+        openai_kwargs = {
             "extra_prompt_messages": [
                 MessagesPlaceholder(variable_name=self.memory_key)
             ],
@@ -70,17 +85,54 @@ class AgentC:
                 content="Your name is SushiBot. You are a helpful AI assistant."
             ),
         }
-        self.memory = ConversationBufferWindowMemory(
-            k=20, memory_key=self.memory_key, return_messages=True
-        )
-        self.agent = initialize_agent(
+        self.openai_multi = initialize_agent(
             self.tools,
             self.llm,
             agent=AgentType.OPENAI_MULTI_FUNCTIONS,
             memory=self.memory,
             verbose=True,
-            agent_kwargs=self.agent_kwargs,
+            agent_kwargs=openai_kwargs,
         )
+        self.gpt4_multi = initialize_agent(
+            self.tools,
+            self.gpt4,
+            agent=AgentType.OPENAI_MULTI_FUNCTIONS,
+            memory=self.memory,
+            verbose=True,
+            agent_kwargs=openai_kwargs,
+        )
+        self.openai_single = initialize_agent(
+            self.tools,
+            self.llm,
+            agent=AgentType.OPENAI_FUNCTIONS,
+            memory=self.memory,
+            verbose=True,
+            agent_kwargs=openai_kwargs,
+        )
+        chat_history = MessagesPlaceholder(variable_name=self.memory_key)
+        self.react = initialize_agent(
+            self.tools,
+            self.conservative_llm,
+            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+            memory=self.memory,
+            verbose=True,
+            agent_kwargs = {
+                "memory_prompts": [chat_history],
+                "input_variables": ["input", "agent_scratchpad", self.memory_key]
+            }
+        )
+        self.vicuna = initialize_agent(
+            [],
+            self.vicuna,
+            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+            memory=self.memory,
+            verbose=True,
+            agent_kwargs = {
+                "memory_prompts": [chat_history],
+                "input_variables": ["input", "agent_scratchpad", self.memory_key]
+            }
+        )
+        self.agent = self.openai_multi
 
     def handle(self, sender, msg, reply):
         try:
@@ -96,6 +148,21 @@ class AgentC:
         if msg == "/reset":
             self.memory.clear()
             return "Your session has been reset."
+        elif msg == "/openai":
+            self.agent = self.openai_single
+            return "You're now chatting to OpenAI Functions model."
+        elif msg == "/multi":
+            self.agent = self.openai_multi
+            return "You're now chatting to OpenAI multi-fxs model."
+        elif msg == "/gpt4":
+            self.agent = self.gpt4_multi
+            return "You're now chatting to GPT4."
+        elif msg == "/react":
+            self.agent = self.react
+            return "You're now chatting to the ReAct model."
+        elif msg == "/vicuna":
+            self.agent = self.vicuna
+            return "You're now chatting to the Vicuna model."
         elif msg == "/memory":
             history = get_buffer_string(
                 self.memory.buffer,
