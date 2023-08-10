@@ -8,7 +8,8 @@ from langchain.agents import Tool
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-k_diffuser_model = "stability-ai/stable-diffusion:db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf"
+# k_diffuser_model = "stability-ai/stable-diffusion:db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf"
+k_diffuser_model = "stability-ai/sdxl:2f779eb9b23b34fe171f8eaa021b8261566f0d2c10cd2674063e7dbcd351509e"
 
 img_prompt_template = """
 You are an AI prompt generator for a generative tool called "Stable Diffusion". Stable Diffusion
@@ -148,9 +149,10 @@ def genimg_raw(prompt: str, negative_prompt: str = "") -> str:
             "prompt": prompt,
             "negative_prompt": negative_prompt,
             "scheduler": "DDIM",
-            "image_dimensions": "512x512",
-            "num_inference_steps": 35,
-            "guidance_scale": 8,
+            # "image_dimensions": "512x512",
+            # "num_inference_steps": 35,
+            # "guidance_scale": 8,
+            "refine": "expert_ensemble_refiner",
         },
     )[0]
 

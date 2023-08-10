@@ -38,6 +38,8 @@ def send_and_load_urls(recipient_phone_number, message):
         attachments = []
         for url in urls:
             mime_type = mimetypes.guess_type(url)[0]
+            if mime_type.startswith("text"):
+                continue
             log.debug(f"Trying to fetch & encode {mime_type} from URL: {url}")
             data = base64.b64encode(requests.get(url).content).decode("utf-8")
             attachments.append(f"data:{mime_type};base64,{data}")
