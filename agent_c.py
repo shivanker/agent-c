@@ -17,13 +17,10 @@ from langchain.schema import (
     get_buffer_string,
     SystemMessage,
 )
-from langchain.agents import load_tools
 from langchain.agents.agent_toolkits import PlayWrightBrowserToolkit
 from langchain.tools.playwright.utils import (
     create_sync_playwright_browser,
 )
-from langchain.llms import Replicate
-from langchain.chat_models import ChatVertexAI
 
 from tools.gnews import top_headlines, HeadlinesInput
 from tools.ytsubs import yt_transcript
@@ -38,18 +35,33 @@ class AgentC:
     def __init__(self):
         if AgentC.playwright == None:
             # TODO: locking?
-            AgentC.playwright = PlayWrightBrowserToolkit.from_browser(sync_browser=create_sync_playwright_browser())
+            AgentC.playwright = PlayWrightBrowserToolkit.from_browser(
+                sync_browser=create_sync_playwright_browser()
+            )
         self.llm = ChatOpenAI(temperature=0.25, model="gpt-3.5-turbo-16k-0613")
-        self.conservative_llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-16k-0613")
+        self.conservative_llm = ChatOpenAI(
+            temperature=0, model="gpt-3.5-turbo-16k-0613"
+        )
         self.gpt4 = ChatOpenAI(temperature=0.2, model="gpt-4-0613")
         # self.llama_chat = Replicate(
         #     model="replicate/llama70b-v2-chat:2c1608e18606fad2812020dc541930f2d0495ce32eee50074220b87300bc16e1"
         # )
         self.search = GoogleSearchAPIWrapper()  # GoogleSerperAPIWrapper()
         self.wikipedia = WikipediaAPIWrapper()
-        self.llm_math_chain = LLMMathChain.from_llm(llm=self.conservative_llm, verbose=True)
-        self.browser_tools = [tool for tool in AgentC.playwright.get_tools() 
-                              if tool.name not in ['previous_webpage', 'get_elements', 'current_webpage', 'extract_hyperlinks']]
+        self.llm_math_chain = LLMMathChain.from_llm(
+            llm=self.conservative_llm, verbose=True
+        )
+        self.browser_tools = [
+            tool
+            for tool in AgentC.playwright.get_tools()
+            if tool.name
+            not in [
+                "previous_webpage",
+                "get_elements",
+                "current_webpage",
+                "extract_hyperlinks",
+            ]
+        ]
         self.basic_tools = [
             Tool(
                 name="Search",
