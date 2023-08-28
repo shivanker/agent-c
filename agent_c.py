@@ -17,27 +17,18 @@ from langchain.schema import (
     get_buffer_string,
     SystemMessage,
 )
-from langchain.agents.agent_toolkits import PlayWrightBrowserToolkit
-from langchain.tools.playwright.utils import (
-    create_sync_playwright_browser,
-)
 
 from tools.gnews import top_headlines, HeadlinesInput
 from tools.ytsubs import yt_transcript
+from tools.reader import ReaderTool
 from agents.genimg import genimg_raw, genimg_curated, img_prompt_chain
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class AgentC:
-    playwright = None
 
     def __init__(self):
-        if AgentC.playwright == None:
-            # TODO: locking?
-            AgentC.playwright = PlayWrightBrowserToolkit.from_browser(
-                sync_browser=create_sync_playwright_browser()
-            )
         self.llm = ChatOpenAI(temperature=0.25, model="gpt-3.5-turbo-16k-0613")
         self.conservative_llm = ChatOpenAI(
             temperature=0, model="gpt-3.5-turbo-16k-0613"
@@ -51,17 +42,6 @@ class AgentC:
         self.llm_math_chain = LLMMathChain.from_llm(
             llm=self.conservative_llm, verbose=True
         )
-        self.browser_tools = [
-            tool
-            for tool in AgentC.playwright.get_tools()
-            if tool.name
-            not in [
-                "previous_webpage",
-                "get_elements",
-                "current_webpage",
-                "extract_hyperlinks",
-            ]
-        ]
         self.basic_tools = [
             Tool(
                 name="Search",
@@ -114,8 +94,8 @@ class AgentC:
                     If you want to dive deeper into a particular news item, you can browse to the specified URL.",
                     args_schema=HeadlinesInput,
                 ),
+                ReaderTool(),
             ]
-            + self.browser_tools
             # + load_tools(["open-meteo-api"], llm=self.conservative_llm)
         )
         self.memory_key = "chat_history"
