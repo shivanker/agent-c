@@ -1,4 +1,4 @@
-#! /usr/bin/python3
+#!/usr/bin/env python3
 
 import logging as log
 
@@ -33,23 +33,23 @@ log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)
 
 
 class AgentC:
+    playwright = None
+
     def __init__(self):
+        if AgentC.playwright == None:
+            # TODO: locking?
+            AgentC.playwright = PlayWrightBrowserToolkit.from_browser(sync_browser=create_sync_playwright_browser())
         self.llm = ChatOpenAI(temperature=0.25, model="gpt-3.5-turbo-16k-0613")
         self.conservative_llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-16k-0613")
         self.gpt4 = ChatOpenAI(temperature=0.2, model="gpt-4-0613")
-        self.vicuna = Replicate(
-            model="replicate/vicuna-13b:6282abe6a492de4145d7bb601023762212f9ddbbe78278bd6771c8b3b2f2a13b"
-        )
-        self.llama_chat = Replicate(
-            model="replicate/llama70b-v2-chat:2c1608e18606fad2812020dc541930f2d0495ce32eee50074220b87300bc16e1"
-        )
-        self.palm_chat = ChatVertexAI(
-            model="chat-bison@001", temperature=0.1, max_output_tokens=256, top_p=0.8
-        )
+        # self.llama_chat = Replicate(
+        #     model="replicate/llama70b-v2-chat:2c1608e18606fad2812020dc541930f2d0495ce32eee50074220b87300bc16e1"
+        # )
         self.search = GoogleSearchAPIWrapper()  # GoogleSerperAPIWrapper()
         self.wikipedia = WikipediaAPIWrapper()
         self.llm_math_chain = LLMMathChain.from_llm(llm=self.conservative_llm, verbose=True)
-        self.browser_toolkit = PlayWrightBrowserToolkit.from_browser(sync_browser=create_sync_playwright_browser())
+        self.browser_tools = [tool for tool in AgentC.playwright.get_tools() 
+                              if tool.name not in ['previous_webpage', 'get_elements', 'current_webpage', 'extract_hyperlinks']]
         self.basic_tools = [
             Tool(
                 name="Search",
@@ -92,7 +92,7 @@ class AgentC:
                     describe a scene in English language, mostly using keywords should be okay \
                     though.",
                 ),
-                Tool.from_function(
+                StructuredTool.from_function(
                     name="Headlines",
                     func=top_headlines,
                     description="Useful for when you need to fetch the top news headlines for a given category. \
@@ -103,7 +103,7 @@ class AgentC:
                     args_schema=HeadlinesInput,
                 ),
             ]
-            + self.browser_toolkit.get_tools()
+            + self.browser_tools
             # + load_tools(["open-meteo-api"], llm=self.conservative_llm)
         )
         self.memory_key = "chat_history"
@@ -115,7 +115,11 @@ class AgentC:
                 MessagesPlaceholder(variable_name=self.memory_key)
             ],
             "system_message": SystemMessage(
-                content="Your name is SushiBot. You are a helpful AI assistant."
+                content="Your name is SushiBot. You are a helpful AI assistant. Keep the \
+                conversation natuarl and flowing, don't respond with closing statements like \
+                'Is there anything else?'. If you don't know something, look it up on the \
+                internet. If Search results are not useful, try to navigate to known expert \
+                websites to fetch real, up-to-date data, and then root your answers to those facts."
             ),
         }
         self.openai_multi = initialize_agent(
@@ -145,29 +149,7 @@ class AgentC:
         chat_history = MessagesPlaceholder(variable_name=self.memory_key)
         self.react = initialize_agent(
             self.tools,
-            self.conservative_llm,
-            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            memory=self.memory,
-            verbose=True,
-            agent_kwargs={
-                "memory_prompts": [chat_history],
-                "input_variables": ["input", "agent_scratchpad", self.memory_key],
-            },
-        )
-        self.palm = initialize_agent(
-            self.basic_tools,
-            self.palm_chat,
-            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            memory=self.memory,
-            verbose=True,
-            agent_kwargs={
-                "memory_prompts": [chat_history],
-                "input_variables": ["input", "agent_scratchpad", self.memory_key],
-            },
-        )
-        self.vicuna = initialize_agent(
-            [],
-            self.vicuna,
+            self.gpt4,
             agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
             memory=self.memory,
             verbose=True,
@@ -182,13 +164,13 @@ class AgentC:
         # But also, replicate doesn't expose an api which takes message hisory or roles ....
         # so would probably have to craft a system prompt to make it chat-worthy
         # or look into LLama-API
-        self.llama = initialize_agent(
-            [],
-            self.llama_chat,
-            agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION,
-            memory=self.memory,
-            verbose=True,
-        )
+        # self.llama = initialize_agent(
+        #     [],
+        #     self.llama_chat,
+        #     agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION,
+        #     memory=self.memory,
+        #     verbose=True,
+        # )
         self.agent = self.gpt4_multi
 
     def handle(self, sender, msg, reply):
@@ -217,15 +199,9 @@ class AgentC:
         elif msg == "/react":
             self.agent = self.react
             return "You're now chatting to the ReAct model."
-        elif msg == "/vicuna":
-            self.agent = self.vicuna
-            return "You're now chatting to the Vicuna model."
         elif msg == "/llama":
             self.agent = self.llama
             return "You're now chatting to the LLama-v2-70B model."
-        elif msg == "/palm":
-            self.agent = self.llama
-            return "You're now chatting to the PaLM2 model."
         elif msg == "/memory":
             history = get_buffer_string(
                 self.memory.buffer,
