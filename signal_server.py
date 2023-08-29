@@ -147,22 +147,29 @@ def on_message(ws, message):
             log.warning(f"Received message from disallowed number: {sender}")
             return
 
-        msg_txt = message["envelope"]["dataMessage"]["message"]
-        if "attachments" in message["envelope"]["dataMessage"]:
-            metadata = message["envelope"]["dataMessage"]["attachments"]
-            if "id" in metadata:
-                attachment = fetch_attachment(metadata["id"])
-        log.info(f"{sender} says:" + msg_txt)
-        if sender not in agents:
-            agents[sender] = agent_c.AgentC()
-
-        start_typing(sender)
         try:
-            agents[sender].handle(
-                sender, msg_txt, lambda x: send_and_load_urls(sender, x)
+            msg_txt = message["envelope"]["dataMessage"]["message"]
+            if "attachments" in message["envelope"]["dataMessage"]:
+                metadata = message["envelope"]["dataMessage"]["attachments"]
+                if "id" in metadata:
+                    attachment = fetch_attachment(metadata["id"])
+            log.info(f"{sender} says:" + msg_txt)
+            if sender not in agents:
+                agents[sender] = agent_c.AgentC()
+
+            start_typing(sender)
+            try:
+                agents[sender].handle(
+                    sender, msg_txt, lambda x: send_and_load_urls(sender, x)
+                )
+            finally:
+                stop_typing(sender)
+        except Exception as e:
+            send(
+                sender,
+                "Something went wrong.\nHere's the traceback for the brave of heart:\n\n"
+                + str(e),
             )
-        finally:
-            stop_typing(sender)
 
     except Exception as e:
         traceback.print_exc()

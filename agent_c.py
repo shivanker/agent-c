@@ -10,13 +10,17 @@ from langchain.agents import initialize_agent, Tool
 from langchain.tools import StructuredTool
 from langchain.agents import AgentType
 from langchain.chat_models import ChatOpenAI
-from langchain.utilities import WikipediaAPIWrapper
+from langchain.utilities import (
+    WikipediaAPIWrapper,
+    DuckDuckGoSearchAPIWrapper,
+)
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain.prompts import MessagesPlaceholder
 from langchain.schema import (
     get_buffer_string,
     SystemMessage,
 )
+from pydantic import BaseModel, Field
 
 from tools.gnews import top_headlines, HeadlinesInput
 from tools.ytsubs import yt_transcript
@@ -26,8 +30,17 @@ from agents.genimg import genimg_raw, genimg_curated, img_prompt_chain
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-class AgentC:
+class SearchInput(BaseModel):
+    query: str = Field(
+        description="Search query",
+    )
+    num_results: int = Field(
+        default=10,
+        description="Number of results desired. Typically this should be around 10-20 since some results contain sub-results.",
+    )
 
+
+class AgentC:
     def __init__(self):
         self.llm = ChatOpenAI(temperature=0.25, model="gpt-3.5-turbo-16k-0613")
         self.conservative_llm = ChatOpenAI(
@@ -37,23 +50,24 @@ class AgentC:
         # self.llama_chat = Replicate(
         #     model="replicate/llama70b-v2-chat:2c1608e18606fad2812020dc541930f2d0495ce32eee50074220b87300bc16e1"
         # )
-        self.search = GoogleSearchAPIWrapper()  # GoogleSerperAPIWrapper()
+        self.search_provider = GoogleSearchAPIWrapper()  # DuckDuckGoSearchAPIWrapper()
+        self.search = self.search_provider.results
         self.wikipedia = WikipediaAPIWrapper()
         self.llm_math_chain = LLMMathChain.from_llm(
             llm=self.conservative_llm, verbose=True
         )
         self.basic_tools = [
-            Tool(
-                name="Search",
-                func=self.search.run,
-                description="Useful for when you need to answer questions about current events. \
-                    You can use this tool to verify your facts with latest information from the internet. \
-                    You are no longer restricted by your out-of-date training data. \
-                    You should ask targeted questions. \
-                    When you can't figure out what to do with a message, try searching for the keywords using this tool. \
-                    If you can't find what you were looking for in the results of this tool, \
-                    DO NOT invent information. Just say \"I couldn't find it on the internet.\".",
-            ),
+            # Tool.from_function(
+            #     name="Search",
+            #     func=self.search_provider.run,
+            #     description="Useful for when you need to answer questions about current events. \
+            #         You can use this tool to verify your facts with latest information from the internet. \
+            #         You are no longer restricted by your out-of-date training data. \
+            #         You should ask targeted questions. \
+            #         When you can't figure out what to do with a message, try searching for the keywords using this tool. \
+            #         If you can't find what you were looking for in the results of this tool, \
+            #         DO NOT invent information. Just say \"I couldn't find it on the internet.\".",
+            # ),
             Tool(
                 name="Calculator",
                 func=self.llm_math_chain.run,
@@ -65,16 +79,22 @@ class AgentC:
                 description="Useful for when you need to look up facts like from an encyclopedia. \
                     Remember, this is a high-quality trusted source.",
             ),
-            Tool(
-                name="YoutubeTranscriptFetcher",
-                func=yt_transcript,
-                description="Useful for when you need to fetch the transcript of a YouTube video \
-                    to understand it better, find something in it, or to explain it to the user.",
-            ),
         ]
         self.tools = (
             self.basic_tools
             + [
+                StructuredTool.from_function(
+                    name="Search",
+                    func=self.search,
+                    description="Useful for when you need to answer questions about current events. \
+                        You can use this tool to verify your facts with latest information from the internet. \
+                        You are no longer restricted by your out-of-date training data. \
+                        You should ask targeted questions. \
+                        When you can't figure out what to do with a message, try searching for the keywords using this tool. \
+                        If you can't find what you were looking for in the results of this tool, \
+                        DO NOT invent information. Just say \"I couldn't find it on the internet.\".",
+                    args_schema=SearchInput,
+                ),
                 Tool.from_function(
                     name="ImageGenerator",
                     func=genimg_curated,
@@ -95,6 +115,12 @@ class AgentC:
                     args_schema=HeadlinesInput,
                 ),
                 ReaderTool(),
+                Tool(
+                    name="YoutubeTranscriptFetcher",
+                    func=yt_transcript,
+                    description="Useful for when you need to fetch the transcript of a YouTube video \
+                        to understand it better, find something in it, or to explain it to the user.",
+                ),
             ]
             # + load_tools(["open-meteo-api"], llm=self.conservative_llm)
         )
@@ -166,14 +192,7 @@ class AgentC:
         self.agent = self.gpt4_multi
 
     def handle(self, sender, msg, reply):
-        try:
-            reply(self.handle2(msg))
-        except Exception as e:
-            reply(
-                "Something went wrong.\nHere's the traceback for the brave of heart:\n\n"
-                + str(e)
-            )
-            raise
+        reply(self.handle2(msg))
 
     def handle2(self, msg):
         if msg == "/reset":
