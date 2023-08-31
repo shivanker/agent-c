@@ -155,13 +155,11 @@ def on_message(ws, message):
                     attachment = fetch_attachment(metadata["id"])
             log.info(f"{sender} says:" + msg_txt)
             if sender not in agents:
-                agents[sender] = agent_c.AgentC()
+                agents[sender] = agent_c.AgentC(lambda x: send_and_load_urls(sender, x))
 
             start_typing(sender)
             try:
-                agents[sender].handle(
-                    sender, msg_txt, lambda x: send_and_load_urls(sender, x)
-                )
+                agents[sender].handle(msg_txt)
             finally:
                 stop_typing(sender)
         except Exception as e:
@@ -170,6 +168,7 @@ def on_message(ws, message):
                 "Something went wrong.\nHere's the traceback for the brave of heart:\n\n"
                 + str(e),
             )
+            raise
 
     except Exception as e:
         traceback.print_exc()

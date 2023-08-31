@@ -1,26 +1,22 @@
 #!/usr/bin/env python3
 
 import logging as log
+from typing import Any, Dict, Optional, Union
+from pydantic import BaseModel, Field
 
-from langchain import (
-    LLMMathChain,
-    GoogleSearchAPIWrapper,
-)
-from langchain.agents import initialize_agent, Tool
-from langchain.tools import StructuredTool
-from langchain.agents import AgentType
+from langchain import LLMMathChain
+from langchain.agents import initialize_agent, AgentType, Tool
+from langchain.callbacks.stdout import StdOutCallbackHandler
+from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain.chat_models import ChatOpenAI
+from langchain.prompts import MessagesPlaceholder
+from langchain.schema import get_buffer_string, AgentAction, SystemMessage
+from langchain.tools import StructuredTool
 from langchain.utilities import (
     WikipediaAPIWrapper,
     DuckDuckGoSearchAPIWrapper,
+    GoogleSearchAPIWrapper,
 )
-from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-from langchain.prompts import MessagesPlaceholder
-from langchain.schema import (
-    get_buffer_string,
-    SystemMessage,
-)
-from pydantic import BaseModel, Field
 
 from tools.gnews import top_headlines, HeadlinesInput
 from tools.ytsubs import yt_transcript
@@ -34,15 +30,38 @@ class SearchInput(BaseModel):
     query: str = Field(
         description="Search query",
     )
-    num_results: int = Field(
-        default=10,
-        description="Number of results desired. Typically this should be around 10-20 since some results contain sub-results.",
-    )
+    # num_results: int = Field(
+    #     default=10,
+    #     description="Number of results desired. Typically this should be around 10-20 since some results contain sub-results.",
+    # )
+
+
+class SignalCallbackHandler(StdOutCallbackHandler):
+    """Callback Handler that sends updates back to signal."""
+
+    def __init__(self, reply_fn):
+        """Initialize callback handler."""
+        self.reply = reply_fn
+
+    def on_agent_action(
+        self, action: AgentAction, color: Optional[str] = None, **kwargs: Any
+    ) -> Any:
+        """Run on agent action."""
+        print(action.log)
+        self.reply("⚙️🛠️ " + action.log)
+
+    def on_tool_error(
+        self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
+    ) -> None:
+        """Do nothing."""
+        print(error)
 
 
 class AgentC:
-    def __init__(self):
-        self.llm = ChatOpenAI(temperature=0.25, model="gpt-3.5-turbo-16k-0613")
+    def __init__(self, reply_fn):
+        self.reply = reply_fn
+        self.callback = SignalCallbackHandler(self.reply)
+        self.gpt3 = ChatOpenAI(temperature=0.25, model="gpt-3.5-turbo-16k-0613")
         self.conservative_llm = ChatOpenAI(
             temperature=0, model="gpt-3.5-turbo-16k-0613"
         )
@@ -51,7 +70,7 @@ class AgentC:
         #     model="replicate/llama70b-v2-chat:2c1608e18606fad2812020dc541930f2d0495ce32eee50074220b87300bc16e1"
         # )
         self.search_provider = GoogleSearchAPIWrapper()  # DuckDuckGoSearchAPIWrapper()
-        self.search = self.search_provider.results
+        self.search = lambda query: self.search_provider.results(query, num_results=10)
         self.wikipedia = WikipediaAPIWrapper()
         self.llm_math_chain = LLMMathChain.from_llm(
             llm=self.conservative_llm, verbose=True
@@ -97,7 +116,7 @@ class AgentC:
                 ),
                 Tool.from_function(
                     name="ImageGenerator",
-                    func=genimg_curated,
+                    func=(lambda p: genimg_curated(p, self.reply)),
                     description="Useful when you need to create an image that the user asks you to. \
                     This tool returns a URL of a human-visible image based on text keywords. You \
                     can return this URL when the user asks for an image. In the input you need to \
@@ -140,13 +159,14 @@ class AgentC:
                 websites to fetch real, up-to-date data, and then root your answers to those facts."
             ),
         }
-        self.openai_multi = initialize_agent(
+        self.gpt4_single = initialize_agent(
             self.tools,
-            self.llm,
-            agent=AgentType.OPENAI_MULTI_FUNCTIONS,
+            self.gpt4,
+            agent=AgentType.OPENAI_FUNCTIONS,
             memory=self.memory,
             verbose=True,
             agent_kwargs=openai_kwargs,
+            callbacks=[self.callback],
         )
         self.gpt4_multi = initialize_agent(
             self.tools,
@@ -155,14 +175,16 @@ class AgentC:
             memory=self.memory,
             verbose=True,
             agent_kwargs=openai_kwargs,
+            callbacks=[self.callback],
         )
-        self.openai_single = initialize_agent(
+        self.gpt3_single = initialize_agent(
             self.tools,
-            self.llm,
+            self.gpt3,
             agent=AgentType.OPENAI_FUNCTIONS,
             memory=self.memory,
             verbose=True,
             agent_kwargs=openai_kwargs,
+            callbacks=[self.callback],
         )
         chat_history = MessagesPlaceholder(variable_name=self.memory_key)
         self.react = initialize_agent(
@@ -175,6 +197,7 @@ class AgentC:
                 "memory_prompts": [chat_history],
                 "input_variables": ["input", "agent_scratchpad", self.memory_key],
             },
+            callbacks=[self.callback],
         )
         # TODO: Configure temperature, tools
         # Next steps: must use chat model, base model needs very structured prompts, not ideal for signal
@@ -189,30 +212,31 @@ class AgentC:
         #     memory=self.memory,
         #     verbose=True,
         # )
+        # TODO: Try PlanAndExecute agents
         self.agent = self.gpt4_multi
 
-    def handle(self, sender, msg, reply):
-        reply(self.handle2(msg))
+    def handle(self, msg):
+        self.reply(self.handle2(msg))
 
     def handle2(self, msg):
         if msg == "/reset":
             self.memory.clear()
             return "Your session has been reset."
-        elif msg == "/openai":
-            self.agent = self.openai_single
-            return "You're now chatting to OpenAI Functions model."
-        elif msg == "/multi":
-            self.agent = self.openai_multi
-            return "You're now chatting to OpenAI multi-fxs model."
         elif msg == "/gpt4":
+            self.agent = self.gpt4_single
+            return "You're now chatting to GPT4 Functions model (single)."
+        elif msg == "/multi":
             self.agent = self.gpt4_multi
+            return "You're now chatting to GPT4 Functions model (multi)."
+        elif msg == "/gpt3":
+            self.agent = self.gpt3_single
             return "You're now chatting to GPT4."
         elif msg == "/react":
             self.agent = self.react
             return "You're now chatting to the ReAct model."
-        elif msg == "/llama":
-            self.agent = self.llama
-            return "You're now chatting to the LLama-v2-70B model."
+        # elif msg == "/llama":
+        #     self.agent = self.llama
+        #     return "You're now chatting to the LLama-v2-70B model."
         elif msg == "/memory":
             history = get_buffer_string(
                 self.memory.buffer,

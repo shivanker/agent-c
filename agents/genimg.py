@@ -1,15 +1,19 @@
 #! /usr/bin/python3
 
 import logging as log
+from typing import Callable
+
 import replicate
 
-from langchain import PromptTemplate, OpenAI, LLMChain
-from langchain.agents import Tool
+from langchain import PromptTemplate, LLMChain
+from langchain.chat_models import ChatOpenAI
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # k_diffuser_model = "stability-ai/stable-diffusion:db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf"
-k_diffuser_model = "stability-ai/sdxl:2f779eb9b23b34fe171f8eaa021b8261566f0d2c10cd2674063e7dbcd351509e"
+k_diffuser_model = (
+    "stability-ai/sdxl:2f779eb9b23b34fe171f8eaa021b8261566f0d2c10cd2674063e7dbcd351509e"
+)
 
 img_prompt_template = """
 You are an AI prompt generator for a generative tool called "Stable Diffusion". Stable Diffusion
@@ -157,13 +161,13 @@ def genimg_raw(prompt: str, negative_prompt: str = "") -> str:
     )[0]
 
 
-conservative_llm = OpenAI(temperature=0.05)
+conservative_llm = ChatOpenAI(temperature=0.1, model="gpt-4")
 img_prompt_chain = LLMChain(
     llm=conservative_llm, prompt=PromptTemplate.from_template(img_prompt_template)
 )
 
 
-def genimg_curated(main_prompt: str) -> str:
+def genimg_curated(main_prompt: str, logger: Callable = log.info) -> str:
     curated_prompt = img_prompt_chain(main_prompt)["text"]
-    log.info(f"Curated prompt: {curated_prompt}")
+    logger(f"🪄🪄 Using curated image prompt: {curated_prompt}")
     return genimg_raw(curated_prompt, negative_prompt=default_negative_prompt)
