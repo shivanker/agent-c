@@ -18,7 +18,7 @@ from langchain.utilities import (
     GoogleSearchAPIWrapper,
 )
 
-from tools.gnews import top_headlines, HeadlinesInput
+from tools.gnews import HeadlinesTool
 from tools.ytsubs import yt_transcript
 from tools.reader import ReaderTool
 from agents.genimg import genimg_raw, genimg_curated, img_prompt_chain
@@ -123,16 +123,7 @@ class AgentC:
                     describe a scene in English language, mostly using keywords should be okay \
                     though.",
                 ),
-                StructuredTool.from_function(
-                    name="Headlines",
-                    func=top_headlines,
-                    description="Useful for when you need to fetch the top news headlines for a given category. \
-                    The input should be the category of news you want as a string. This must be one of \
-                    general, world, nation, business, technology, entertainment, sports, science or health. \
-                    Returns the result in the form of a json string. \
-                    If you want to dive deeper into a particular news item, you can browse to the specified URL.",
-                    args_schema=HeadlinesInput,
-                ),
+                HeadlinesTool(),
                 ReaderTool(),
                 Tool(
                     name="YoutubeTranscriptFetcher",
