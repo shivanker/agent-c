@@ -22,7 +22,7 @@ from langchain.utilities import (
 from tools.gnews import HeadlinesTool
 from tools.ytsubs import yt_transcript
 from tools.reader import ReaderTool
-from agents.genimg import genimg_raw, genimg_curated, img_prompt_chain
+from tools.genimg import genimg_raw, genimg_curated, img_prompt_chain
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 langchain.debug = True
