@@ -4,6 +4,7 @@ import logging as log
 from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, Field
 
+import langchain
 from langchain import LLMMathChain
 from langchain.agents import initialize_agent, AgentType, Tool
 from langchain.callbacks.stdout import StdOutCallbackHandler
@@ -24,7 +25,8 @@ from tools.reader import ReaderTool
 from agents.genimg import genimg_raw, genimg_curated, img_prompt_chain
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
+langchain.debug = True
+# langchain.verbose = True
 
 class SearchInput(BaseModel):
     query: str = Field(
@@ -221,7 +223,7 @@ class AgentC:
             return "You're now chatting to GPT4 Functions model (multi)."
         elif msg == "/gpt3":
             self.agent = self.gpt3_single
-            return "You're now chatting to GPT4."
+            return "You're now chatting to GPT3.5."
         elif msg == "/react":
             self.agent = self.react
             return "You're now chatting to the ReAct model."

@@ -7,6 +7,8 @@ import json
 from typing import Dict, Any, Type
 from pydantic import BaseModel, Field
 from langchain.tools.base import BaseTool
+from langchain.chat_models import ChatOpenAI
+from langchain.agents import initialize_agent, AgentType
 
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -70,3 +72,30 @@ class HeadlinesTool(BaseTool):
         # end_timestamp: str = None,
     ) -> str:
         raise NotImplementedError
+
+
+
+class SmartHeadlinesTool(BaseTool):
+    """LLM-based headlines tool to assist in fetching news."""
+
+    name: str = "smart_headlines"
+    # args_schema: Type[BaseModel] = 
+    description: str = """Useful for when you need to fetch the top news headlines. \
+        Returns the result in the form of a json string. \
+        If you want to dive deeper into a particular news item, you can browse to the specified URL."""
+    agent = initialize_agent(
+            [HeadlinesTool()],
+            ChatOpenAI(temperature=0.03, model="gpt-4-0613"),
+            agent=AgentType.OPENAI_FUNCTIONS,
+            # memory=self.memory,
+            verbose=True,
+            # agent_kwargs=openai_kwargs,
+            # callbacks=[self.callback],
+        )
+
+    async def _arun(self, query: str) -> str:
+        raise NotImplementedError
+    def _run(self, query: str) -> str:
+        """Use the tool."""
+        raise NotImplementedError
+
