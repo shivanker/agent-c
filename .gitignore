@@ -1,3 +1,5 @@
 __pycache__
 signal-cli-rest-api/data
 .langchain-venv
+*_sys.txt
+tmp

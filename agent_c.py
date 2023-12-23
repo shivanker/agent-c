@@ -5,9 +5,9 @@ from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, Field
 
 import langchain
-from langchain import LLMMathChain
 from langchain.agents import initialize_agent, AgentType, Tool
 from langchain.callbacks.stdout import StdOutCallbackHandler
+from langchain.chains import LLMMathChain
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import MessagesPlaceholder
@@ -116,24 +116,27 @@ class AgentC:
                         DO NOT invent information. Just say \"I couldn't find it on the internet.\".",
                     args_schema=SearchInput,
                 ),
-                Tool.from_function(
-                    name="ImageGenerator",
-                    func=(lambda p: genimg_curated(p, self.reply)),
-                    description="Useful when you need to create an image that the user asks you to. \
+                ReaderTool(),
+            ]
+        )
+        self.advanced_tools = (self.tools + [
+            Tool.from_function(
+                name="ImageGenerator",
+                func=(lambda p: genimg_curated(p, self.reply)),
+                description="Useful when you need to create an image that the user asks you to. \
                     This tool returns a URL of a human-visible image based on text keywords. You \
                     can return this URL when the user asks for an image. In the input you need to \
                     describe a scene in English language, mostly using keywords should be okay \
                     though.",
-                ),
-                HeadlinesTool(),
-                ReaderTool(),
-                Tool(
-                    name="YoutubeTranscriptFetcher",
-                    func=yt_transcript,
-                    description="Useful for when you need to fetch the transcript of a YouTube video \
+            ),
+            HeadlinesTool(),
+            Tool(
+                name="YoutubeTranscriptFetcher",
+                func=yt_transcript,
+                description="Useful for when you need to fetch the transcript of a YouTube video \
                         to understand it better, find something in it, or to explain it to the user.",
-                ),
-            ]
+            ),
+        ]
             # + load_tools(["open-meteo-api"], llm=self.conservative_llm)
         )
         self.memory_key = "chat_history"
@@ -152,6 +155,20 @@ class AgentC:
                 websites to fetch real, up-to-date data, and then root your answers to those facts."
             ),
         }
+        self.gpt4_sushigo = initialize_agent(
+            self.tools,
+            self.gpt4,
+            agent=AgentType.OPENAI_FUNCTIONS,
+            memory=self.memory,
+            verbose=True,
+            agent_kwargs={
+                "extra_prompt_messages": openai_kwargs["extra_prompt_messages"],
+                "system_message": SystemMessage(
+                    content=open('sushigo_sys.txt').read()
+                ),
+            },
+            callbacks=[self.callback],
+        )
         self.gpt4_single = initialize_agent(
             self.tools,
             self.gpt4,
@@ -170,6 +187,15 @@ class AgentC:
             agent_kwargs=openai_kwargs,
             callbacks=[self.callback],
         )
+        self.gpt4_advanced = initialize_agent(
+            self.advanced_tools,
+            self.gpt4,
+            agent=AgentType.OPENAI_FUNCTIONS,
+            memory=self.memory,
+            verbose=True,
+            agent_kwargs=openai_kwargs,
+            callbacks=[self.callback],
+        )
         self.gpt3_single = initialize_agent(
             self.tools,
             self.gpt3,
@@ -179,19 +205,19 @@ class AgentC:
             agent_kwargs=openai_kwargs,
             callbacks=[self.callback],
         )
-        chat_history = MessagesPlaceholder(variable_name=self.memory_key)
-        self.react = initialize_agent(
-            self.tools,
-            self.gpt4,
-            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            memory=self.memory,
-            verbose=True,
-            agent_kwargs={
-                "memory_prompts": [chat_history],
-                "input_variables": ["input", "agent_scratchpad", self.memory_key],
-            },
-            callbacks=[self.callback],
-        )
+        # chat_history = MessagesPlaceholder(variable_name=self.memory_key)
+        # self.react = initialize_agent(
+        #     self.tools,
+        #     self.gpt4,
+        #     agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+        #     memory=self.memory,
+        #     verbose=True,
+        #     agent_kwargs={
+        #         "memory_prompts": [chat_history],
+        #         "input_variables": ["input", "agent_scratchpad", self.memory_key],
+        #     },
+        #     callbacks=[self.callback],
+        # )
         # TODO: Configure temperature, tools
         # Next steps: must use chat model, base model needs very structured prompts, not ideal for signal
         # Need to implement a BaseChatModel::_generate on top of Replicate (which is only an LLM)
@@ -206,7 +232,7 @@ class AgentC:
         #     verbose=True,
         # )
         # TODO: Try PlanAndExecute agents
-        self.agent = self.gpt4_multi
+        self.agent = self.gpt4_advanced
 
     def handle(self, msg):
         self.reply(self.handle2(msg))
@@ -224,9 +250,15 @@ class AgentC:
         elif msg == "/gpt3":
             self.agent = self.gpt3_single
             return "You're now chatting to GPT3.5."
-        elif msg == "/react":
-            self.agent = self.react
-            return "You're now chatting to the ReAct model."
+        elif msg == "/advanced":
+            self.agent = self.gpt4_advanced
+            return "You're now chatting to GPT4 advanced functions model (single)."
+        elif msg == "/sushigo":
+            self.agent = self.gpt4_sushigo
+            return "You're now chatting to SushiGo."
+        # elif msg == "/react":
+        #     self.agent = self.react
+        #     return "You're now chatting to the ReAct model."
         # elif msg == "/llama":
         #     self.agent = self.llama
         #     return "You're now chatting to the LLama-v2-70B model."
